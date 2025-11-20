@@ -1,0 +1,7 @@
+numpy
+
+[gpu]
+cupy-cuda12x
+
+[torch]
+torch>=2.0.0

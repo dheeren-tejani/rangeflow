@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: rangeflow
+Version: 0.1.0
+Summary: Certified Robustness and Uncertainty Quantification for AI
+Author-email: Dheeren-Tejani <dheerenntejani@gmail.com>
+License: MIT License
+Project-URL: Homepage, https://github.com/yourusername/rangeflow
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy
+Provides-Extra: gpu
+Requires-Dist: cupy-cuda12x; extra == "gpu"
+Provides-Extra: torch
+Requires-Dist: torch>=2.0.0; extra == "torch"
+Dynamic: license-file
