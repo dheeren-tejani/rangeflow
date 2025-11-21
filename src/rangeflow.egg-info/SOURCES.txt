@@ -2,6 +2,7 @@ LICENSE
 README.md
 pyproject.toml
 src/rangeflow/__init__.py
+src/rangeflow/analysis.py
 src/rangeflow/backend.py
 src/rangeflow/core.py
 src/rangeflow/layers.py
@@ -9,6 +10,8 @@ src/rangeflow/loss.py
 src/rangeflow/nn.py
 src/rangeflow/ops.py
 src/rangeflow/patch.py
+src/rangeflow/rl.py
+src/rangeflow/vision.py
 src/rangeflow.egg-info/PKG-INFO
 src/rangeflow.egg-info/SOURCES.txt
 src/rangeflow.egg-info/dependency_links.txt
