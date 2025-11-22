@@ -1,7 +1,7 @@
 # Build artifacts
 dist/
 build/
-*.egg-info/
+src/rangeflow/rangeflow.egg-info/
 __pycache__/
 *.pyc
 *.pyo
@@ -32,3 +32,4 @@ Thumbs.db
 *.whl
 *.tar.gz
 verification.py
+Ranges.py
