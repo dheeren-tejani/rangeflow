@@ -1,7 +1,7 @@
 # Build artifacts
 dist/
 build/
-rangeflow.egg-info/
+src/rangeflow.egg-info/
 __pycache__/
 *.pyc
 *.pyo
