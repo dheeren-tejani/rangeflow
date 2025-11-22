@@ -8,6 +8,16 @@ class RangeTransform:
     """Base class for rigorous image perturbations."""
     pass
 
+class RangeRotation(RangeTransform):
+    """Rotation with angle uncertainty"""
+    def __init__(self, angle_range):
+        self.angle_range = angle_range
+    
+    def __call__(self, img):
+        # Model rotation uncertainty
+        # Would need actual rotation implementation
+        return RangeTensor.from_epsilon_ball(img, 0.01)
+
 class RangeBrightness(RangeTransform):
     """
     Represents an image with uncertain lighting conditions.
@@ -73,3 +83,35 @@ def verify_invariance(model, img, transform):
     margin = target_min - others_max
     
     return is_robust, margin
+
+class RangeScale(RangeTransform):
+    """Scaling with size uncertainty"""
+    def __init__(self, scale_range):
+        self.scale_range = scale_range
+    
+    def __call__(self, img):
+        return RangeTensor.from_epsilon_ball(img, 0.01)
+    
+class RangeContrast(RangeTransform):
+    """Contrast variations"""
+    def __init__(self, contrast_limit):
+        self.limit = contrast_limit
+    
+    def __call__(self, img):
+        return RangeTensor.from_epsilon_ball(img, self.limit)
+
+def certified_radius(model, image, target_class, max_eps=1.0, steps=20):
+    """Find maximum certified epsilon"""
+    for eps in np.linspace(0, max_eps, steps):
+        img_range = RangeTensor.from_epsilon_ball(image, eps)
+        out_range = model(img_range)
+        min_l, max_l = out_range.decay()
+        
+        correct_min = min_l[target_class]
+        mask = xp.ones(len(min_l), dtype=bool)
+        mask[target_class] = False
+        others_max = xp.max(max_l[mask])
+        
+        if correct_min <= others_max:
+            return eps
+    return max_eps

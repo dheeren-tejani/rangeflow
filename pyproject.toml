@@ -4,28 +4,96 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rangeflow"
-version = "0.2.0"
+version = "0.3.0"
 description = "Certified Robustness and Uncertainty Quantification for AI"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT License"}
+license = {text = "MIT"}
 authors = [
-  {name = "Dheeren-Tejani", email = "dheerenntejani@gmail.com"}
+  {name = "Dheeren Tejani", email = "dheerenntejani@gmail.com"}
 ]
+keywords = ["machine-learning", "robustness", "uncertainty", "interval-arithmetic", "ai-safety"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
+# Core dependencies (always installed)
 dependencies = [
-    "numpy",
+    "numpy>=1.19.0",
 ]
 
 [project.optional-dependencies]
-gpu = ["cupy-cuda12x"]
-torch = ["torch>=2.0.0"]
+# GPU acceleration
+gpu = [
+    "cupy-cuda12x>=12.0.0",  # For CUDA 12.x
+]
+
+# PyTorch integration (for layers and training)
+torch = [
+    "torch>=2.0.0",
+]
+
+# Visualization
+viz = [
+    "matplotlib>=3.3.0",
+]
+
+# Complete package (everything!)
+all = [
+    "torch>=2.0.0",
+    "matplotlib>=3.3.0",
+    "cupy-cuda12x>=12.0.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "mypy>=0.990",
+    "colorama>=0.4.0",  # For verify.py colored output
+]
+
+# Documentation
+docs = [
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/rangeflow"
+"Homepage" = "https://github.com/dheeren-tejani/rangeflow"
+"Bug Tracker" = "https://github.com/dheeren-tejani/rangeflow/issues"
+"Documentation" = "https://github.com/dheeren-tejani/rangeflow#readme"
+"Source Code" = "https://github.com/dheeren-tejani/rangeflow"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
