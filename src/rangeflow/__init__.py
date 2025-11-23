@@ -18,4 +18,4 @@ from . import transforms
 from . import utils
 from . import visualize
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
