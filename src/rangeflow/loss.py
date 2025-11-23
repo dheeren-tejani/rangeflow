@@ -9,6 +9,9 @@ import numpy as np
 
 xp = get_backend()
 
+# Detect backend type
+BACKEND = 'torch' if hasattr(xp, 'nn') else 'numpy'
+
 
 def robust_cross_entropy(out_range, targets, mode='worst_case'):
     """
@@ -34,25 +37,47 @@ def robust_cross_entropy(out_range, targets, mode='worst_case'):
     l, h = out_range.decay()
     
     if mode == 'worst_case':
-        # Worst case: maximize logits of wrong classes, minimize correct class
-        worst = h.copy()
-        rows = xp.arange(len(targets))
+        worst = h.clone() if hasattr(h, 'clone') else h.copy()
+        
+        # Handle device placement for indices
+        if hasattr(worst, 'device'):
+            rows = xp.arange(len(targets), device=worst.device)
+        else:
+            rows = xp.arange(len(targets))
+            
         worst[rows, targets] = l[rows, targets]
         
-        # Compute log-softmax on worst-case logits
-        shift = xp.max(worst, axis=1, keepdims=True)
-        z = worst - shift
-        log_probs = z - xp.log(xp.sum(xp.exp(z), axis=1, keepdims=True))
+        # Handle dimension args (dim vs axis) - FIXED
+        if BACKEND == 'torch':
+            shift = xp.max(worst, dim=1, keepdim=True)
+            if isinstance(shift, tuple): shift = shift[0]  # PyTorch max returns (values, indices)
+            
+            z = worst - shift
+            sum_exp = xp.sum(xp.exp(z), dim=1, keepdim=True)
+            log_probs = z - xp.log(sum_exp)
+        else:
+            shift = xp.max(worst, axis=1, keepdims=True)
+            z = worst - shift
+            sum_exp = xp.sum(xp.exp(z), axis=1, keepdims=True)
+            log_probs = z - xp.log(sum_exp)
         
         return -xp.mean(log_probs[rows, targets])
     
     elif mode == 'average':
         # Average case: use center of range
         center = (l + h) / 2
-        shift = xp.max(center, axis=1, keepdims=True)
-        z = center - shift
-        log_probs = z - xp.log(xp.sum(xp.exp(z), axis=1, keepdims=True))
-        rows = xp.arange(len(targets))
+        
+        if BACKEND == 'torch':
+            shift = xp.max(center, dim=1, keepdim=True)
+            if isinstance(shift, tuple): shift = shift[0]
+            z = center - shift
+            log_probs = z - xp.log(xp.sum(xp.exp(z), dim=1, keepdim=True))
+        else:
+            shift = xp.max(center, axis=1, keepdims=True)
+            z = center - shift
+            log_probs = z - xp.log(xp.sum(xp.exp(z), axis=1, keepdims=True))
+        
+        rows = xp.arange(len(targets)) if not hasattr(center, 'device') else xp.arange(len(targets), device=center.device)
         return -xp.mean(log_probs[rows, targets])
     
     else:
@@ -82,7 +107,12 @@ def robust_mse(y_range, y_target, mode='worst_case'):
         # Worst case error
         loss_min = (min_pred - y_target) ** 2
         loss_max = (max_pred - y_target) ** 2
-        loss = xp.maximum(loss_min, loss_max)
+        
+        if BACKEND == 'torch':
+            loss = xp.max(xp.stack([loss_min, loss_max]), dim=0)[0]
+        else:
+            loss = xp.maximum(loss_min, loss_max)
+        
         return xp.mean(loss)
     
     elif mode == 'average':
@@ -111,7 +141,12 @@ def robust_mae(y_range, y_target, mode='worst_case'):
     if mode == 'worst_case':
         loss_min = xp.abs(min_pred - y_target)
         loss_max = xp.abs(max_pred - y_target)
-        loss = xp.maximum(loss_min, loss_max)
+        
+        if BACKEND == 'torch':
+            loss = xp.max(xp.stack([loss_min, loss_max]), dim=0)[0]
+        else:
+            loss = xp.maximum(loss_min, loss_max)
+        
         return xp.mean(loss)
     
     elif mode == 'average':
@@ -143,8 +178,12 @@ def robust_bce(y_range, y_target, mode='worst_case'):
     
     # Clip to avoid log(0)
     eps = 1e-7
-    min_pred = xp.clip(min_pred, eps, 1 - eps)
-    max_pred = xp.clip(max_pred, eps, 1 - eps)
+    if BACKEND == 'torch':
+        min_pred = xp.clamp(min_pred, eps, 1 - eps)
+        max_pred = xp.clamp(max_pred, eps, 1 - eps)
+    else:
+        min_pred = xp.clip(min_pred, eps, 1 - eps)
+        max_pred = xp.clip(max_pred, eps, 1 - eps)
     
     if mode == 'worst_case':
         # For y=1: worst is min_pred (underestimates probability)
@@ -184,7 +223,10 @@ def robust_hinge(y_range, y_target, margin=1.0):
     min_logits, max_logits = y_range.decay()
     
     batch_size = len(y_target)
-    rows = xp.arange(batch_size)
+    if hasattr(min_logits, 'device'):
+        rows = xp.arange(batch_size, device=min_logits.device)
+    else:
+        rows = xp.arange(batch_size)
     
     # Get correct class logits (worst case: minimum)
     correct_min = min_logits[rows, y_target]
@@ -195,10 +237,13 @@ def robust_hinge(y_range, y_target, margin=1.0):
     mask[rows, y_target] = False
     
     # Reshape to get per-sample max of wrong classes
-    wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), axis=1)
-    
-    # Hinge loss: max(0, margin + wrong_score - correct_score)
-    loss = xp.maximum(0, margin + wrong_max - correct_min)
+    if BACKEND == 'torch':
+        wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), dim=1)
+        if isinstance(wrong_max, tuple): wrong_max = wrong_max[0]
+        loss = xp.clamp(margin + wrong_max - correct_min, min=0)
+    else:
+        wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), axis=1)
+        loss = xp.maximum(0, margin + wrong_max - correct_min)
     
     return xp.mean(loss)
 
@@ -266,22 +311,38 @@ def ibp_loss(out_range, targets, kappa=1.0):
     min_logits, max_logits = out_range.decay()
     
     batch_size = len(targets)
-    rows = xp.arange(batch_size)
+    if hasattr(min_logits, 'device'):
+        rows = xp.arange(batch_size, device=min_logits.device)
+    else:
+        rows = xp.arange(batch_size)
     
     # Standard cross-entropy on center
     center = (min_logits + max_logits) / 2
-    shift = xp.max(center, axis=1, keepdims=True)
-    z = center - shift
-    log_probs = z - xp.log(xp.sum(xp.exp(z), axis=1, keepdims=True))
+    
+    if BACKEND == 'torch':
+        shift = xp.max(center, dim=1, keepdim=True)
+        if isinstance(shift, tuple): shift = shift[0]
+        z = center - shift
+        log_probs = z - xp.log(xp.sum(xp.exp(z), dim=1, keepdim=True))
+    else:
+        shift = xp.max(center, axis=1, keepdims=True)
+        z = center - shift
+        log_probs = z - xp.log(xp.sum(xp.exp(z), axis=1, keepdims=True))
+    
     ce_loss = -xp.mean(log_probs[rows, targets])
     
     # Robust margin term
     correct_min = min_logits[rows, targets]
     mask = xp.ones_like(max_logits, dtype=bool)
     mask[rows, targets] = False
-    wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), axis=1)
     
-    margin_loss = xp.mean(xp.maximum(0, kappa - (correct_min - wrong_max)))
+    if BACKEND == 'torch':
+        wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), dim=1)
+        if isinstance(wrong_max, tuple): wrong_max = wrong_max[0]
+        margin_loss = xp.mean(xp.clamp(kappa - (correct_min - wrong_max), min=0))
+    else:
+        wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), axis=1)
+        margin_loss = xp.mean(xp.maximum(0, kappa - (correct_min - wrong_max)))
     
     return ce_loss + margin_loss
 
@@ -325,21 +386,32 @@ def certified_accuracy_loss(out_range, targets, epsilon):
     min_logits, max_logits = out_range.decay()
     
     batch_size = len(targets)
-    rows = xp.arange(batch_size)
+    if hasattr(min_logits, 'device'):
+        rows = xp.arange(batch_size, device=min_logits.device)
+    else:
+        rows = xp.arange(batch_size)
     
     # Certification requires: min(correct) > max(others)
     correct_min = min_logits[rows, targets]
     
     mask = xp.ones_like(max_logits, dtype=bool)
     mask[rows, targets] = False
-    wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), axis=1)
+    
+    if BACKEND == 'torch':
+        wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), dim=1)
+        if isinstance(wrong_max, tuple): wrong_max = wrong_max[0]
+    else:
+        wrong_max = xp.max(xp.where(mask, max_logits, -xp.inf), axis=1)
     
     # Loss = how much we violate certification
     # Negative margin = not certified
     margin = correct_min - wrong_max
     
     # Penalize negative margins heavily
-    loss = xp.mean(xp.maximum(0, -margin) ** 2)
+    if BACKEND == 'torch':
+        loss = xp.mean(xp.clamp(-margin, min=0) ** 2)
+    else:
+        loss = xp.mean(xp.maximum(0, -margin) ** 2)
     
     return loss
 
@@ -352,3 +424,55 @@ def robust_loss(y_range, y_target, mode='worst_case'):
     Deprecated: Use robust_mse or robust_cross_entropy directly.
     """
     return robust_mse(y_range, y_target, mode=mode)
+
+def trades_loss(model, x_clean, target, epsilon, beta=6.0):
+    """
+    TRADES Loss (Zhang et al., 2019) adapted for Certified Robustness.
+    
+    Optimizes the trade-off between standard accuracy and robustness
+    regularization. Essential for high-epsilon training.
+    
+    Args:
+        model: RangeFlow model
+        x_clean: Standard input tensor
+        target: Labels
+        epsilon: Current perturbation radius
+        beta: Regularization strength (higher = more robust, less accurate)
+    """
+    import torch
+    
+    # 1. Standard Loss (Clean Accuracy)
+    logits_clean = model(x_clean)
+    if hasattr(logits_clean, 'decay'): logits_clean = logits_clean.avg()
+    loss_clean = torch.nn.functional.cross_entropy(logits_clean, target)
+    
+    # 2. Robust Regularization (The "Anchor")
+    # We want the worst-case output to stay close to the clean output
+    from .core import RangeTensor
+    x_range = RangeTensor.from_epsilon_ball(x_clean, epsilon)
+    y_range = model(x_range)
+    
+    # Get worst-case divergence
+    # KL-Divergence between Softmax(Clean) and Softmax(Worst-Case)
+    # We approximate worst-case by taking the bound that maximizes distance
+    min_logits, max_logits = y_range.decay()
+    
+    # We want to maximize distance, so we pick bounds that contradict the clean prediction
+    probs_clean = torch.softmax(logits_clean, dim=1)
+    
+    # Construct "Adversarial" Logits from bounds
+    # If clean prob is high, use min bound (drag it down)
+    # If clean prob is low, use max bound (push it up)
+    # This creates the maximum possible divergence within the certified box
+    adv_logits = torch.where(logits_clean > 0, min_logits, max_logits)
+    
+    log_probs_adv = torch.log_softmax(adv_logits, dim=1)
+    
+    loss_robust = torch.nn.functional.kl_div(
+        log_probs_adv, 
+        probs_clean, 
+        reduction='batchmean', 
+        log_target=False
+    )
+    
+    return loss_clean + beta * loss_robust

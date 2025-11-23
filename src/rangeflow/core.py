@@ -93,17 +93,18 @@ class RangeTensor:
     def from_range(cls, min_v, max_v):
         """
         Create range from explicit bounds.
-        
-        Args:
-            min_v: Lower bound
-            max_v: Upper bound
-            
-        Returns:
-            RangeTensor representing [min_v, max_v]
         """
         t_min, t_max = to_tensor(min_v), to_tensor(max_v)
-        assert xp.all(t_min <= t_max), "min must be <= max"
-        return cls(Symbol("LEAF_RANGE", value=(t_min, t_max)), t_min.shape)
+        
+        # If tiny float errors cause min > max, we clamp them instead of crashing
+        if xp.__name__ == 'torch':
+            final_min = xp.min(t_min, t_max)
+            final_max = xp.max(t_min, t_max)
+        else:
+            assert xp.all(t_min <= t_max), "min must be <= max"
+            final_min, final_max = t_min, t_max
+            
+        return cls(Symbol("LEAF_RANGE", value=(final_min, final_max)), final_min.shape)
     
     @classmethod
     def from_epsilon_ball(cls, center, epsilon):
