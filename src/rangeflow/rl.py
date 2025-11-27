@@ -1,6 +1,8 @@
 from .layers import RangeLinear, RangeReLU, RangeModule
 from .core import RangeTensor
 import numpy as np
+import torch
+import torch.nn as nn
 
 class RangeDQN:
     """
@@ -18,25 +20,59 @@ class RangeDQN:
         x = self.relu(self.l2(x))
         return self.l3(x)
 
-    def select_safe_action(self, state, uncertainty=0.05):
+    def select_action(self, state, valid_mask=None, epsilon=0.0, mode='robust', device='cpu'):
         """
-        Selects action based on Worst-Case Q-value (MaxMin policy).
-        Guarantees a baseline reward even in worst noise.
-        """
-        # 1. Wrap state in range (Sensor Noise)
-        state_range = RangeTensor.from_array(state)
-        noise = RangeTensor.from_array(np.ones_like(state) * uncertainty)
-        robust_state = state_range + noise
+        Selects action based on Q-value ranges.
         
-        # 2. Get Q-Value Ranges
-        q_range = self.forward(robust_state)
+        Args:
+            state: Current state vector
+            valid_mask: Binary mask of valid actions (1=valid, 0=invalid)
+            epsilon: Exploration rate
+            mode: 'robust' (MaxMin) or 'standard' (MaxAvg)
+        """
+        # 1. Exploration
+        if np.random.rand() < epsilon:
+            if valid_mask is not None:
+                valid_indices = np.where(valid_mask == 1)[0]
+                return np.random.choice(valid_indices)
+            return np.random.randint(0, self.model.layers[-1].weight.shape[0])
+            
+        # 2. RangeFlow Inference
+        # Wrap state in epsilon ball to model uncertainty (e.g., hidden cards)
+        if not isinstance(state, torch.Tensor):
+            state = torch.tensor(state, dtype=torch.float32, device=device)
+        
+        if len(state.shape) == 1:
+            state = state.unsqueeze(0)
+            
+        # Create uncertainty interval around state
+        # This represents "I am mostly sure, but small details might be wrong"
+        x_range = RangeTensor.from_epsilon_ball(state, 0.1)
+        
+        q_range = self.forward(x_range)
         min_q, max_q = q_range.decay()
         
-        # 3. Pessimistic Selection (Safety First)
-        # We pick the action with the highest MINIMUM Q-value.
-        # "Which action is best if everything goes wrong?"
-        safe_action = np.argmax(min_q)
-        return safe_action
+        # 3. Action Masking (Crucial for logic games)
+        if valid_mask is not None:
+            if not isinstance(valid_mask, torch.Tensor):
+                valid_mask = torch.tensor(valid_mask, device=device)
+            
+            # Set invalid moves to -Infinity
+            min_q = min_q.clone()
+            max_q = max_q.clone()
+            min_q[0, valid_mask == 0] = -float('inf')
+            max_q[0, valid_mask == 0] = -float('inf')
+        
+        # 4. Selection Strategy
+        if mode == 'robust':
+            # Maximin: Pick action with best WORST-CASE outcome
+            return torch.argmax(min_q).item()
+        elif mode == 'optimistic':
+            # Maximax: Pick action with best BEST-CASE outcome
+            return torch.argmax(max_q).item()
+        else:
+            # Standard: Pick action with best AVERAGE outcome
+            return torch.argmax((min_q + max_q)/2).item()
 
     def select_optimistic_action(self, state, uncertainty=0.05):
         """

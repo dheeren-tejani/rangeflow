@@ -31,5 +31,5 @@ Thumbs.db
 # RangeFlow specific
 *.whl
 *.tar.gz
-verification.py
+verify.py
 Ranges.py

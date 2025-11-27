@@ -6,7 +6,6 @@ from .layers import (RangeLinear, RangeConv2d, RangeLayerNorm, RangeBatchNorm1d,
 from .loss import robust_cross_entropy, robust_mse, robust_bce
 from .backend import get_device, get_backend
 
-# New Modules
 from . import vision
 from . import rl
 from . import analysis
@@ -18,4 +17,9 @@ from . import transforms
 from . import utils
 from . import visualize
 
-__version__ = "0.3.2"
+from .linear_bounds import LinearRangeTensor, hybrid_verification
+from .continual import RangeParameter, ContinualLinear
+from .verification import DomainConstraints, BranchAndBound
+from .advanced_train import train_with_curriculum, monitor_ranges
+
+__version__ = "0.4.0"
